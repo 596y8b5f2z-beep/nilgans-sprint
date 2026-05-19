@@ -1,0 +1,133 @@
+﻿<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hölderlins Nilgans-Sprint - WIT GmbH</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f1f5f9; margin: 0; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; }
+        canvas { background-color: #ffffff; border: 8px solid #ffffff; border-radius: 24px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); max-width: 95vw; max-height: 70vh; }
+        .ui-panel { background: white; padding: 1rem 2rem; border-radius: 20px; margin-bottom: 1rem; display: flex; gap: 3rem; align-items: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+        #msgBox { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 2.25rem; border-radius: 24px; text-align: center; z-index: 100; box-shadow: 0 0 50px rgba(0,0,0,0.2); width: 92%; max-width: 480px; }
+    </style>
+</head>
+<body>
+
+<div class="ui-panel">
+    <div class="flex flex-col"><span class="text-[10px] font-bold uppercase tracking-widest text-slate-400">Restzeit</span><span class="text-3xl font-black text-rose-500" id="timer">30</span></div>
+    <div class="flex flex-col border-l border-slate-100 pl-6"><span class="text-[10px] font-bold uppercase tracking-widest text-slate-400">Briefe geliefert</span><span class="text-3xl font-black text-blue-600" id="score">0</span></div>
+    <div class="hidden md:block text-xs text-slate-500 border-l border-slate-100 pl-6">
+        <span class="bg-slate-100 px-1.5 py-0.5 rounded font-bold text-slate-800">Pfeiltasten</span> Laufen<br>
+        <span class="bg-slate-100 px-1.5 py-0.5 rounded font-bold text-blue-600">Taste E</span> Sprung & Aktion
+    </div>
+</div>
+
+<canvas id="gameCanvas" width="800" height="500"></canvas>
+
+<div id="msgBox">
+    <h2 id="msgTitle" class="text-2xl font-black mb-2 text-slate-900">Nilgans-Sprint 🪶</h2>
+    <div class="mb-4 text-left">
+        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Dein Name:</label>
+        <input id="playerName" type="text" maxlength="15" placeholder="Name" class="w-full px-4 py-2 rounded-xl border border-slate-200 text-center font-bold text-slate-800 bg-slate-50">
+    </div>
+    <button id="startBtn" onclick="tryStartGame()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl">Spiel starten</button>
+    <div id="leaderboardList" class="mt-4 text-xs text-slate-600 text-left">Lade Highscores...</div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+// --- HIER DEINE FIREBASE DATEN EINTRAGEN ---
+const firebaseConfig = {
+  apiKey: "AIzaSyC9V3CGHNDBPwcMwwHss_nDMtapAgF1oUg",
+  authDomain: "nilgans-sprint.firebaseapp.com",
+  projectId: "nilgans-sprint",
+  storageBucket: "nilgans-sprint.firebasestorage.app",
+  messagingSenderId: "504129398182",
+  appId: "1:504129398182:web:89597af581fee11c1a9b67"
+};
+// --------------------------------------------
+
+let db = null;
+try {
+    const app = initializeApp(firebaseConfig);
+    db = getFirestore(app);
+    const scoresCollection = collection(db, 'highscores');
+    const q = query(scoresCollection, orderBy('score', 'desc'), limit(5));
+    onSnapshot(q, (snapshot) => {
+        const list = [];
+        snapshot.forEach(doc => list.push(doc.data()));
+        document.getElementById('leaderboardList').innerHTML = "<b>Top 5:</b><br>" + list.map((e, i) => `${i+1}. ${e.name}: ${e.score}`).join('<br>');
+    });
+} catch(e) { document.getElementById('leaderboardList').innerText = "⚠️ Lokaler Modus"; }
+
+window.saveHighscore = async (name, score) => {
+    if (db) await addDoc(collection(db, 'highscores'), { name, score, timestamp: Date.now() });
+};
+</script>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const timerEl = document.getElementById('timer');
+const scoreEl = document.getElementById('score');
+const msgBox = document.getElementById('msgBox');
+const nameInput = document.getElementById('playerName');
+
+let score = 0, timeLeft = 30, gameActive = false, currentRoom = 'hallway', inventory = null, isJumping = false, jumpProgress = 0, jumpDirection = 1;
+const player = { x: 400, y: 350, speed: 7, w: 45, h: 45 };
+const keys = {};
+const obstacle = { x: 350, y: 230, w: 100, h: 40 };
+
+window.addEventListener('keydown', e => { keys[e.key] = true; if (e.key.toLowerCase() === 'e') handleAction(); });
+window.addEventListener('keyup', e => { keys[e.key] = false; });
+
+function drawGoose(x, y, jumpOffset) {
+    const py = y - jumpOffset;
+    ctx.fillStyle = '#713f12'; ctx.beginPath(); ctx.ellipse(x + 22, py + 30, 20, 15, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#d6d3d1'; ctx.fillRect(x + 32, py + 15, 8, 15);
+    ctx.beginPath(); ctx.arc(x + 36, py + 15, 10, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#f97316'; ctx.beginPath(); ctx.moveTo(x + 44, py + 12); ctx.lineTo(x + 55, py + 16); ctx.lineTo(x + 44, py + 20); ctx.fill();
+    ctx.fillStyle = '#000000'; ctx.fillRect(x + 36, py + 11, 14, 5);
+}
+
+function handleAction() {
+    if (!gameActive) return;
+    if (currentRoom === 'courtyard' && !isJumping) {
+        if (player.x > 300 && player.x < 500 && player.y > 100 && player.y < 400) {
+            isJumping = true; jumpProgress = 0; jumpDirection = (player.y < obstacle.y) ? 1 : -1;
+        }
+    }
+    // Room transitions logic would go here
+}
+
+function update() {
+    if (!gameActive) return;
+    if (!isJumping) {
+        if (keys['ArrowUp']) player.y -= player.speed;
+        if (keys['ArrowDown']) player.y += player.speed;
+        if (keys['ArrowLeft']) player.x -= player.speed;
+        if (keys['ArrowRight']) player.x += player.speed;
+    } else {
+        player.y += jumpDirection * 6;
+        jumpProgress += 0.05;
+        if (jumpProgress >= 1) isJumping = false;
+    }
+    draw();
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const jumpY = isJumping ? Math.sin(jumpProgress * Math.PI) * 120 : 0;
+    drawGoose(player.x, player.y, jumpY);
+}
+
+function tryStartGame() { if(nameInput.value) { gameActive = true; setInterval(() => {if(timeLeft>0) timeLeft--; timerEl.innerText = timeLeft;}, 1000); requestAnimationFrame(gameLoop); msgBox.style.display = 'none'; } }
+function gameLoop() { update(); if(gameActive) requestAnimationFrame(gameLoop); }
+draw();
+</script>
+</body>
+</html>
