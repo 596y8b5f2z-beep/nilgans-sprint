@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Nilgans Sprint 2.0 - KI Edition</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+body { margin:0; overflow:hidden; font-family:Inter; background:#eef2ff; }
+canvas { background:white; display:block; margin:auto; border-radius:20px; }
+#msgBox { position:absolute; top:20px; left:20px; background:white; padding:10px; border-radius:10px; }
+</style>
+</head>
+
+<body>
+
+<canvas id="game" width="900" height="550"></canvas>
+
+<div id="msgBox">🪶 Nilgans KI-Edition geladen</div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+let room = "hall";
+let score = 0;
+let turbo = 0;
+let shake = 0;
+
+const player = {x:400,y:300,w:40,h:40,speed:5};
+
+const keys = {};
+document.addEventListener("keydown",e=>keys[e.key]=true);
+document.addEventListener("keyup",e=>keys[e.key]=false);
+
+function beep(freq=200){
+    const a = new (window.AudioContext||window.webkitAudioContext)();
+    const o = a.createOscillator();
+    o.frequency.value=freq;
+    o.connect(a.destination);
+    o.start();
+    setTimeout(()=>o.stop(),80);
+}
+
+let npcs = [
+ {name:"Dorothee",x:200,y:200,vx:1},
+ {name:"Madeleine",x:300,y:250,vx:-1},
+ {name:"Nils",x:500,y:200,vx:1},
+ {name:"Jan",x:600,y:300,vx:-1}
+];
+
+let coffee = 0;
+let printerJam = false;
+let energy = 0;
+
+function updateNPC(){
+ for(let n of npcs){
+  n.x += n.vx;
+  if(n.x<100||n.x>800) n.vx*=-1;
+ }
+}
+
+function drawSign(x,y,text){
+ ctx.fillStyle="#1e293b";
+ ctx.fillRect(x,y,120,40);
+ ctx.fillStyle="white";
+ ctx.font="10px Arial";
+ ctx.fillText(text,x+5,y+25);
+}
+
+function draw(){
+ ctx.clearRect(0,0,900,550);
+
+ if(shake>0){
+  ctx.save();
+  ctx.translate(Math.random()*5,Math.random()*5);
+ }
+
+ // ROOMS
+ if(room==="hall"){
+   ctx.fillStyle="#f1f5f9";
+   ctx.fillRect(0,0,900,550);
+
+   drawSign(600,80,"WIT GmbH");
+   drawSign(600,130,"KI-Allianz BW");
+
+   ctx.fillText("Flur",20,20);
+
+   if(keys.ArrowRight) player.x+=player.speed;
+   if(keys.ArrowLeft) player.x-=player.speed;
+   if(keys.ArrowUp) player.y-=player.speed;
+   if(keys.ArrowDown) player.y+=player.speed;
+
+   if(player.x<100) room="courtyard";
+   if(player.x>800) room="office";
+   if(player.y<100) room="kitchen";
+   if(player.y>400) room="printer";
+
+ }
+
+ if(room==="courtyard"){
+   ctx.fillStyle="#ecfccb";
+   ctx.fillRect(0,0,900,550);
+   drawSign(650,100,"KI-Allianz BW Hof");
+
+   if(keys.ArrowRight) player.x+=player.speed;
+   if(keys.ArrowLeft) player.x-=player.speed;
+
+   if(Math.random()<0.01){
+     energy={x:Math.random()*800,y:Math.random()*500};
+   }
+
+   if(energy && Math.abs(player.x-energy.x)<20){
+     turbo=300;
+     energy=null;
+     beep(600);
+   }
+ }
+
+ if(room==="kitchen"){
+   ctx.fillStyle="#fff7ed";
+   ctx.fillRect(0,0,900,550);
+
+   ctx.fillText("KÜCHE ☕",400,50);
+
+   if(keys.e){
+     coffee++;
+     beep(300);
+     shake=10;
+   }
+
+   if(coffee>5){
+     ctx.fillText("KAFFEEMASCHINE EXPLODIERT 💥",300,300);
+     shake=20;
+   }
+
+   if(player.x<50) room="hall";
+ }
+
+ if(room==="printer"){
+   ctx.fillStyle="#fef2f2";
+   ctx.fillRect(0,0,900,550);
+
+   ctx.fillText("DRUCKERRAUM 🖨️",350,50);
+
+   if(keys.e){
+     printerJam=true;
+     shake=15;
+     beep(150);
+   }
+
+   if(printerJam){
+     ctx.fillText("PAPIERSTAU!",350,200);
+   }
+
+   if(player.y>500) room="hall";
+ }
+
+ if(room==="office"){
+   ctx.fillStyle="#eef2ff";
+   ctx.fillRect(0,0,900,550);
+
+   ctx.fillText("CHEF THORSTEN 👨‍💼",350,50);
+
+   if(keys.e){
+     score++;
+     beep(500);
+   }
+
+   if(player.y>500) room="hall";
+ }
+
+ // NPC
+ updateNPC();
+ for(let n of npcs){
+   ctx.fillStyle="blue";
+   ctx.fillRect(n.x,n.y,20,20);
+   ctx.fillText(n.name,n.x,n.y-5);
+
+   if(Math.abs(player.x-n.x)<20){
+     player.x -= n.vx*2;
+   }
+ }
+
+ // PLAYER
+ ctx.fillStyle = turbo>0 ? "orange" : "black";
+ ctx.fillRect(player.x,player.y,30,30);
+
+ ctx.fillText("Score: "+score,20,20);
+
+ if(turbo>0){
+   turbo--;
+   player.speed=9;
+ } else player.speed=5;
+
+ if(shake>0) shake--;
+
+ if(shake>0) ctx.restore();
+ requestAnimationFrame(draw);
+}
+
+draw();
+</script>
+</body>
+</html>
